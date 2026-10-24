@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch
 from app import create_app
 from models import db
+from sqlalchemy import create_engine
 
 def test_production_secret_key_enforcement():
     """Verify that in production, a missing SECRET_KEY raises a clear ValueError."""
@@ -13,19 +14,47 @@ def test_production_secret_key_enforcement():
             importlib.reload(config)
         assert "SECRET_KEY environment variable is required in production" in str(excinfo.value)
 
-def test_postgres_url_normalization():
-    """Verify that postgres:// URLs from Render are normalized to postgresql://."""
-    mock_env = {
-        'FLASK_ENV': 'development',
+def test_postgres_url_normalization_with_psycopg2():
+    """Verify that postgres:// and postgresql:// URLs are normalized to postgresql+psycopg2://."""
+    import importlib
+    import config
+
+    # 1. Test postgres:// scheme (Render legacy)
+    with patch.dict(os.environ, {
         'DATABASE_URL': 'postgres://render_user:secret_pass@dpg-host:5432/hostel_db',
         'SECRET_KEY': 'test-secret'
-    }
-    with patch.dict(os.environ, mock_env, clear=True):
-        import importlib
-        import config
+    }, clear=True):
         importlib.reload(config)
-        assert config.Config.SQLALCHEMY_DATABASE_URI.startswith('postgresql://')
-        assert 'postgres://' not in config.Config.SQLALCHEMY_DATABASE_URI
+        uri = config.Config.SQLALCHEMY_DATABASE_URI
+        assert uri.startswith('postgresql+psycopg2://')
+        assert 'postgres://' not in uri
+
+    # 2. Test standard postgresql:// scheme without explicit driver
+    with patch.dict(os.environ, {
+        'DATABASE_URL': 'postgresql://render_user:secret_pass@dpg-host:5432/hostel_db',
+        'SECRET_KEY': 'test-secret'
+    }, clear=True):
+        importlib.reload(config)
+        uri = config.Config.SQLALCHEMY_DATABASE_URI
+        assert uri.startswith('postgresql+psycopg2://')
+
+    # 3. Test explicit driver scheme preservation
+    with patch.dict(os.environ, {
+        'DATABASE_URL': 'postgresql+pg8000://render_user:secret_pass@dpg-host:5432/hostel_db',
+        'SECRET_KEY': 'test-secret'
+    }, clear=True):
+        importlib.reload(config)
+        uri = config.Config.SQLALCHEMY_DATABASE_URI
+        assert uri.startswith('postgresql+pg8000://')
+
+    # 4. Verify SQLAlchemy create_engine selects psycopg2 driver without attempting psycopg v3
+    with patch.dict(os.environ, {
+        'DATABASE_URL': 'postgres://render_user:secret_pass@dpg-host:5432/hostel_db',
+        'SECRET_KEY': 'test-secret'
+    }, clear=True):
+        importlib.reload(config)
+        engine = create_engine(config.Config.SQLALCHEMY_DATABASE_URI)
+        assert engine.dialect.driver == 'psycopg2'
 
 def test_health_check_failure_sanitization(client, app):
     """Verify /health returns 503 and does NOT leak connection errors/credentials."""

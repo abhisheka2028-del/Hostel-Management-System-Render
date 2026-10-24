@@ -4,12 +4,6 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_DIR = os.environ.get('DATABASE_DIR', os.path.join(BASE_DIR, 'database'))
 os.makedirs(DB_DIR, exist_ok=True)
 
-import os
-
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_DIR = os.environ.get('DATABASE_DIR', os.path.join(BASE_DIR, 'database'))
-os.makedirs(DB_DIR, exist_ok=True)
-
 class Config:
     # Determine if running in production (e.g. Render, production container)
     IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production' or os.environ.get('RENDER') == 'true'
@@ -23,11 +17,16 @@ class Config:
         )
     SECRET_KEY = _env_secret or 'hostel-dev-secret-key-replace-in-production'
 
-    # Database URL handling: normalize Render's legacy postgres:// to postgresql:// for SQLAlchemy
+    # Database URL handling:
+    # Render provides PostgreSQL connection strings starting with postgres:// or postgresql://.
+    # When psycopg2-binary is installed, SQLAlchemy requires postgresql+psycopg2://
+    # to avoid defaulting to psycopg (v3). Preserve any explicitly specified driver schemes.
     _raw_db_url = os.environ.get('DATABASE_URL')
     if _raw_db_url:
         if _raw_db_url.startswith('postgres://'):
-            _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1)
+            _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql+psycopg2://', 1)
+        elif _raw_db_url.startswith('postgresql://'):
+            _raw_db_url = _raw_db_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
         SQLALCHEMY_DATABASE_URI = _raw_db_url
     else:
         # Fallback to local SQLite for development and testing
