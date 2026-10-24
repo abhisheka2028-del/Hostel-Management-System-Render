@@ -113,27 +113,26 @@ def create_app(config_class=Config):
         return render_template('errors/500.html'), 500
 
     # ----------------------------------------------------
-    # Health Check Endpoint for Docker & Kubernetes
+    # Health Check Endpoint for Render, Docker & Kubernetes
     # ----------------------------------------------------
     @app.route('/health')
     def health_check():
-        db_status = "connected"
         try:
-            # Simple query to verify database connection
+            # Active lightweight ping to verify database connectivity
             db.session.execute(db.select(1)).scalar()
         except Exception as e:
-            db_status = f"unhealthy: {str(e)}"
+            app.logger.error(f"Health check database failure: {e}")
             return jsonify({
                 "status": "unhealthy",
-                "database": db_status,
+                "database": "unavailable",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }), 503
 
         return jsonify({
             "status": "healthy",
-            "database": db_status,
+            "database": "connected",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "environment": os.environ.get('FLASK_ENV', 'production')
+            "environment": os.environ.get('FLASK_ENV', 'development')
         }), 200
 
     # ----------------------------------------------------

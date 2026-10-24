@@ -1,0 +1,28 @@
+# ==============================================================================
+# Render Blueprint Specification for Hostel Management System
+# Documentation: https://render.com/docs/blueprint-spec
+# ==============================================================================
+
+services:
+  - type: web
+    name: hostel-management-system
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: sh -c "python scripts/init_db.py && python scripts/seed_sample_data.py && gunicorn --bind 0.0.0.0:$PORT --workers 2 app:app"
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hostel-db
+          property: connectionString
+
+databases:
+  - name: hostel-db
+    plan: free
+    databaseName: hostel_management
+    user: hostel_admin
